@@ -1,5 +1,25 @@
+import os
+
 from langchain_openai import ChatOpenAI
 from langchain_classic.prompts import ChatPromptTemplate
+
+try:
+    import streamlit as st  # type: ignore
+except Exception:
+    st = None  # type: ignore
+
+
+def _get_secret(name: str) -> str | None:
+    value = os.getenv(name)
+    if value:
+        return value
+    if st is not None:
+        try:
+            return st.secrets.get(name)  # type: ignore[attr-defined]
+        except Exception:
+            return None
+    return None
+
 
 prompt = ChatPromptTemplate.from_messages([
     ("system", "你是一位资深的旅游文化专家，擅长用简洁优美的语言介绍城市。"),
@@ -12,27 +32,25 @@ prompt = ChatPromptTemplate.from_messages([
 要求：总字数不超过200字，语言简洁优美，突出城市特色。直接输出简介内容，不要添加任何前缀或格式说明。"""),
 ])
 
+_DEEPSEEK_API_KEY = _get_secret("DEEPSEEK_API_KEY")
+
 llm = ChatOpenAI(
-    temperature=0.7,  # 稍微提高温度以获得更生动的描述
+    temperature=0.7,
     model="deepseek-chat",
-    api_key='sk-50a7224452114cac95ff0998ea6dbc15',
-    base_url='https://api.deepseek.com'
+    api_key=_DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com",
 )
 
 city_intro_chain = prompt | llm
+
 
 def get_city_introduction(city: str) -> str:
     """获取城市简介"""
     try:
         result = city_intro_chain.invoke({"city": city})
-        # 提取内容（去除可能的格式标记）
         content = result.content.strip()
-        # 如果内容超过200字，截取前200字
         if len(content) > 200:
             content = content[:200] + "..."
         return content
     except Exception as e:
         return f"无法生成城市简介：{str(e)}"
-
-
-

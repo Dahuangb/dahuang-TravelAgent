@@ -1,11 +1,30 @@
 import os
+from typing import Optional
+
 import requests
 from langchain.tools import BaseTool
 from pydantic import BaseModel, Field
-from typing import ClassVar
-from typing import Optional
 
-BAIDU_AK = os.getenv("BAIDU_AK") or "raNbXCNaFAkXvEWv18eQkL9jTol2Wfj2"
+try:
+    import streamlit as st  # type: ignore
+except Exception:
+    st = None  # type: ignore
+
+
+def _get_baidu_ak() -> str | None:
+    """优先从环境变量 / Streamlit secrets 中安全获取百度地图 AK。"""
+    ak = os.getenv("BAIDU_AK")
+    if ak:
+        return ak
+    if st is not None:
+        try:
+            return st.secrets.get("BAIDU_AK")  # type: ignore[attr-defined]
+        except Exception:
+            return None
+    return None
+
+
+BAIDU_AK = _get_baidu_ak()
 
 class CityInfoInput(BaseModel):
     city: str = Field(description="城市中文名")
@@ -16,6 +35,9 @@ class CityTool(BaseTool):
     args_schema: Optional[type] = CityInfoInput
 
     def _run(self, city: str):
+        if not BAIDU_AK:
+            return {"error": "未配置百度地图密钥（BAIDU_AK）。请在环境变量或 Streamlit secrets 中设置。"}
+
         # 1. 百度地图地理编码拿经纬度
         geo_url = "http://api.map.baidu.com/geocoding/v3/"
         params = {

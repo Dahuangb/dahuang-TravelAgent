@@ -1,17 +1,42 @@
+import os
+from typing import List
+
 from langchain_openai import ChatOpenAI
 from langchain_classic.prompts import ChatPromptTemplate
 from langchain_classic.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
-from typing import List
+
+try:
+    # 可选引入，用于在 Streamlit Cloud 中从 secrets 读取密钥
+    import streamlit as st  # type: ignore
+except Exception:  # 本地非 Streamlit 环境时忽略
+    st = None  # type: ignore
+
+
+def _get_secret(name: str) -> str | None:
+    """统一从环境变量 / Streamlit secrets 读取敏感信息，避免明文写死在代码里。"""
+    value = os.getenv(name)
+    if value:
+        return value
+    if st is not None:
+        try:
+            # 在本地运行时 st.secrets 可能不存在
+            return st.secrets.get(name)  # type: ignore[attr-defined]
+        except Exception:
+            return None
+    return None
+
 
 class SelectedAttraction(BaseModel):
     name: str = Field(description="景点名称")
     reason: str = Field(description="选择理由")
 
+
 class SelectedRestaurant(BaseModel):
     name: str = Field(description="餐厅名称")
     meal_type: str = Field(description="用餐类型：午餐或晚餐")
     reason: str = Field(description="选择理由")
+
 
 class DayPlanSelection(BaseModel):
     morning_attraction: SelectedAttraction = Field(description="上午景点")
@@ -19,6 +44,7 @@ class DayPlanSelection(BaseModel):
     afternoon_attraction: SelectedAttraction = Field(description="下午景点")
     dinner: SelectedRestaurant = Field(description="晚餐餐厅")
     overall_reason: str = Field(description="整体行程安排理由")
+
 
 parser = PydanticOutputParser(pydantic_object=DayPlanSelection)
 
@@ -75,11 +101,18 @@ def create_day_plan_prompt(day: int, destination: str, personal_requirements: st
     
     return prompt
 
+
+_DEEPSEEK_API_KEY = _get_secret("DEEPSEEK_API_KEY")
+if not _DEEPSEEK_API_KEY:
+    # 不在这里直接抛异常，以免整个应用启动失败，由调用方捕获更友好地提示
+    # 在没有配置密钥时，后续调用大模型会报错并在界面显示提示信息
+    pass
+
 llm = ChatOpenAI(
     temperature=0.7,  # 稍微提高温度以获得更多创意
     model="deepseek-chat",
-    api_key='sk-50a7224452114cac95ff0998ea6dbc15',
-    base_url='https://api.deepseek.com'
+    api_key=_DEEPSEEK_API_KEY,
+    base_url="https://api.deepseek.com",
 )
 
 def plan_day_with_llm(day: int, destination: str, personal_requirements: str,
